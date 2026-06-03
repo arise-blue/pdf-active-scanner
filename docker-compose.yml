@@ -1,0 +1,13 @@
+services:
+  pdf-scanner:
+    build: .
+    image: pdf-active-scanner:local
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    network_mode: none
+    volumes:
+      - ../:/scan:ro
+    entrypoint: ["python", "/scanner/pdf_active_scanner.py"]
