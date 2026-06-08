@@ -1,13 +1,29 @@
+version: '3.8'
+
 services:
-  pdf-scanner:
+  app:
     build: .
-    image: pdf-active-scanner:local
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    network_mode: none
+    image: india-tracker:latest
+    container_name: india-tracker-app
+    ports:
+      - "8000:8000"
     volumes:
-      - ../:/scan:ro
-    entrypoint: ["python", "/scanner/pdf_active_scanner.py"]
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+
+  nginx:
+    image: nginx:alpine
+    container_name: india-tracker-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+
+volumes:
+  data:

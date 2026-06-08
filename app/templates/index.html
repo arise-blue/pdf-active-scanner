@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>India Bureaucrat Accountability Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .status-arrested { background-color: #fee2e2; color: #991b1b; }
+        .status-suspended { background-color: #fef3c7; color: #92400e; }
+        .status-convicted { background-color: #e9d5ff; color: #6b21a8; }
+        .status-chargesheeted { background-color: #dbeafe; color: #1e40af; }
+        .status-dismissed { background-color: #fedddd; color: #7f1d1d; }
+        .status-bail { background-color: #bfdbfe; color: #1e3a8a; }
+        .status-inquiry { background-color: #e0e7ff; color: #3730a3; }
+
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+        .drawer-overlay.active { display: block; }
+        .drawer { position: fixed; top: 0; right: -400px; width: 400px; height: 100vh; background: white; transition: right 0.3s; z-index: 50; overflow-y: auto; }
+        .drawer.active { right: 0; }
+
+        @media (max-width: 640px) {
+            .drawer { width: 100%; right: -100%; }
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            min-width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        tbody tr {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        tbody tr:hover {
+            background-color: #f3f4f6;
+        }
+
+        .metric-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .metric-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navbar -->
+    <nav class="bg-slate-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">India Bureaucrat Accountability Tracker</h1>
+                <p class="text-xs text-gray-300 mt-1">Last updated: <span id="last-updated">Never</span></p>
+            </div>
+            <button id="trigger-scrape-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-semibold transition">
+                Trigger Scrape
+            </button>
+        </div>
+    </nav>
+
+    <!-- Stats Bar -->
+    <div class="bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 py-8">
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-total">0</div>
+                    <div class="metric-label">Total Records</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-ias">0</div>
+                    <div class="metric-label">IAS Officers</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-ips">0</div>
+                    <div class="metric-label">IPS Officers</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-suspended">0</div>
+                    <div class="metric-label">Suspended</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-arrested">0</div>
+                    <div class="metric-label">Arrested</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="stat-convicted">0</div>
+                    <div class="metric-label">Convicted</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <input type="text" id="search-input" placeholder="Search by name or charges..."
+                       class="px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                <select id="service-filter" class="px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">All Services</option>
+                    <option value="IAS">IAS</option>
+                    <option value="IPS">IPS</option>
+                    <option value="IRS">IRS</option>
+                    <option value="IFS">IFS</option>
+                </select>
+
+                <select id="status-filter" class="px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">All Status</option>
+                    <option value="Arrested">Arrested</option>
+                    <option value="Suspended">Suspended</option>
+                    <option value="Convicted">Convicted</option>
+                    <option value="Chargesheeted">Chargesheeted</option>
+                    <option value="Under inquiry">Under Inquiry</option>
+                </select>
+
+                <select id="cadre-filter" class="px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">All Cadres</option>
+                </select>
+
+                <button id="clear-filters-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-semibold transition">
+                    Clear Filters
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <div id="loading" class="loading-spinner"></div>
+        <div id="content" style="display: none;">
+            <div class="table-container bg-white rounded shadow overflow-hidden">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Service</th>
+                            <th>Batch</th>
+                            <th>Cadre</th>
+                            <th>Charges</th>
+                            <th>Agency</th>
+                            <th>Status</th>
+                            <th>Last Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody id="officers-table">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-8 flex justify-center gap-2">
+                <button id="prev-page-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">Previous</button>
+                <span id="page-info" class="px-4 py-2">Page 1</span>
+                <button id="next-page-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drawer Overlay -->
+    <div id="drawer-overlay" class="drawer-overlay"></div>
+
+    <!-- Drawer -->
+    <div id="drawer" class="drawer">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="drawer-title" class="text-2xl font-bold"></h2>
+                <button id="close-drawer-btn" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+
+            <div id="drawer-content" class="space-y-4 text-sm">
+                <div>
+                    <label class="font-semibold text-gray-700">Service</label>
+                    <p id="drawer-service" class="text-gray-600"></p>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Cadre</label>
+                    <p id="drawer-cadre" class="text-gray-600"></p>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Status</label>
+                    <p id="drawer-status" class="text-gray-600"></p>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Investigating Agency</label>
+                    <p id="drawer-agency" class="text-gray-600"></p>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-gray-700">Charge Summary</label>
+                    <p id="drawer-charges" class="text-gray-600"></p>
+                </div>
+
+                <div class="mt-6">
+                    <h3 class="font-semibold text-gray-700 mb-3">Related Articles</h3>
+                    <div id="drawer-articles" class="space-y-3">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-gray-300 text-center py-4 mt-12">
+        <p class="text-sm">Data sourced from public news sources. Charges are allegations unless court-convicted. For public interest research only.</p>
+    </footer>
+
+    <script>
+        const API_BASE = '/api';
+        let currentPage = 1;
+        let currentFilters = {};
+        let stats = {};
+
+        function getStatusClass(status) {
+            const statusMap = {
+                'Arrested': 'status-arrested',
+                'Suspended': 'status-suspended',
+                'Convicted': 'status-convicted',
+                'Chargesheeted': 'status-chargesheeted',
+                'Dismissed': 'status-dismissed',
+                'Bail / Reinstated': 'status-bail',
+                'Under inquiry': 'status-inquiry',
+            };
+            return statusMap[status] || 'status-inquiry';
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString();
+        }
+
+        async function fetchStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                stats = data;
+
+                document.getElementById('stat-total').textContent = data.total;
+                document.getElementById('stat-ias').textContent = data.by_service.IAS || 0;
+                document.getElementById('stat-ips').textContent = data.by_service.IPS || 0;
+                document.getElementById('stat-suspended').textContent = data.by_status.Suspended || 0;
+                document.getElementById('stat-arrested').textContent = data.by_status.Arrested || 0;
+                document.getElementById('stat-convicted').textContent = data.by_status.Convicted || 0;
+
+                if (data.last_scraped_at) {
+                    document.getElementById('last-updated').textContent = formatDate(data.last_scraped_at);
+                }
+
+                populateCadreFilter(data.by_cadre);
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        function populateCadreFilter(cadres) {
+            const select = document.getElementById('cadre-filter');
+            const currentValue = select.value;
+
+            for (const cadre of Object.keys(cadres)) {
+                if (!Array.from(select.options).find(o => o.value === cadre)) {
+                    const option = document.createElement('option');
+                    option.value = cadre;
+                    option.textContent = cadre;
+                    select.appendChild(option);
+                }
+            }
+
+            select.value = currentValue;
+        }
+
+        async function fetchOfficers(page = 1) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    page: page,
+                    per_page: 50,
+                    ...currentFilters,
+                });
+
+                const response = await fetch(`${API_BASE}/officers?${params}`);
+                const data = await response.json();
+
+                const tbody = document.getElementById('officers-table');
+                tbody.innerHTML = '';
+
+                data.data.forEach(officer => {
+                    const row = document.createElement('tr');
+                    row.onclick = () => openDrawer(officer);
+
+                    row.innerHTML = `
+                        <td class="font-semibold text-blue-600">${officer.name}</td>
+                        <td>${officer.service || '-'}</td>
+                        <td>${officer.batch_year || '-'}</td>
+                        <td>${officer.cadre || '-'}</td>
+                        <td class="text-xs text-gray-600 max-w-xs truncate">${(officer.charge_summary || '-').substring(0, 50)}...</td>
+                        <td>${officer.investigating_agency || '-'}</td>
+                        <td><span class="status-badge ${getStatusClass(officer.status)}">${officer.status}</span></td>
+                        <td>${formatDate(officer.last_updated_at)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                document.getElementById('page-info').textContent = `Page ${data.page} of ${data.pages}`;
+                document.getElementById('prev-page-btn').disabled = data.page === 1;
+                document.getElementById('next-page-btn').disabled = data.page === data.pages;
+                currentPage = page;
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+
+            } catch (error) {
+                console.error('Error fetching officers:', error);
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function openDrawer(officer) {
+            document.getElementById('drawer-title').textContent = officer.name;
+            document.getElementById('drawer-service').textContent = officer.service || '-';
+            document.getElementById('drawer-cadre').textContent = officer.cadre || '-';
+            document.getElementById('drawer-status').innerHTML = `<span class="status-badge ${getStatusClass(officer.status)}">${officer.status}</span>`;
+            document.getElementById('drawer-agency').textContent = officer.investigating_agency || '-';
+            document.getElementById('drawer-charges').textContent = officer.charge_summary || '-';
+
+            try {
+                const response = await fetch(`${API_BASE}/officers/${officer.id}`);
+                const fullOfficer = await response.json();
+
+                const articlesDiv = document.getElementById('drawer-articles');
+                articlesDiv.innerHTML = '';
+
+                fullOfficer.articles.forEach(article => {
+                    const articleEl = document.createElement('div');
+                    articleEl.className = 'border-l-4 border-blue-500 pl-3';
+                    articleEl.innerHTML = `
+                        <a href="${article.url}" target="_blank" class="text-blue-600 hover:underline font-semibold text-xs">${article.headline}</a>
+                        <p class="text-gray-600 text-xs mt-1">${article.source_name || 'Unknown'} - ${formatDate(article.published_at)}</p>
+                    `;
+                    articlesDiv.appendChild(articleEl);
+                });
+
+                if (fullOfficer.articles.length === 0) {
+                    articlesDiv.innerHTML = '<p class="text-gray-500">No articles found.</p>';
+                }
+            } catch (error) {
+                console.error('Error fetching officer details:', error);
+            }
+
+            document.getElementById('drawer-overlay').classList.add('active');
+            document.getElementById('drawer').classList.add('active');
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawer-overlay').classList.remove('active');
+            document.getElementById('drawer').classList.remove('active');
+        }
+
+        function updateFilters() {
+            currentFilters = {};
+
+            const search = document.getElementById('search-input').value;
+            if (search) currentFilters.q = search;
+
+            const service = document.getElementById('service-filter').value;
+            if (service) currentFilters.service = service;
+
+            const status = document.getElementById('status-filter').value;
+            if (status) currentFilters.status = status;
+
+            const cadre = document.getElementById('cadre-filter').value;
+            if (cadre) currentFilters.cadre = cadre;
+
+            fetchOfficers(1);
+        }
+
+        async function triggerScrape() {
+            const btn = document.getElementById('trigger-scrape-btn');
+            btn.disabled = true;
+            btn.textContent = 'Scraping...';
+
+            try {
+                const token = prompt('Enter admin token:');
+                if (!token) {
+                    btn.disabled = false;
+                    btn.textContent = 'Trigger Scrape';
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE}/scrape/trigger`, {
+                    method: 'POST',
+                    headers: { 'X-Admin-Token': token }
+                });
+
+                const data = await response.json();
+                alert(`Scrape result:\n${JSON.stringify(data.result || data, null, 2)}`);
+                fetchStats();
+                fetchOfficers(1);
+
+            } catch (error) {
+                alert('Scrape failed: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Trigger Scrape';
+            }
+        }
+
+        document.getElementById('trigger-scrape-btn').onclick = triggerScrape;
+        document.getElementById('close-drawer-btn').onclick = closeDrawer;
+        document.getElementById('drawer-overlay').onclick = closeDrawer;
+        document.getElementById('clear-filters-btn').onclick = () => {
+            document.getElementById('search-input').value = '';
+            document.getElementById('service-filter').value = '';
+            document.getElementById('status-filter').value = '';
+            document.getElementById('cadre-filter').value = '';
+            updateFilters();
+        };
+
+        document.getElementById('search-input').addEventListener('input', updateFilters);
+        document.getElementById('service-filter').addEventListener('change', updateFilters);
+        document.getElementById('status-filter').addEventListener('change', updateFilters);
+        document.getElementById('cadre-filter').addEventListener('change', updateFilters);
+
+        document.getElementById('prev-page-btn').onclick = () => fetchOfficers(currentPage - 1);
+        document.getElementById('next-page-btn').onclick = () => fetchOfficers(currentPage + 1);
+
+        fetchStats();
+        fetchOfficers(1);
+
+        setInterval(fetchStats, 60000);
+    </script>
+</body>
+</html>
